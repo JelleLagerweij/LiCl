@@ -63,12 +63,12 @@ do
 			cp ../../../../input/water.xyz .
 
 			# compute total number of Li and Cl
-			N_salt=$(($m*$N_salt))
+			N=$(($m*$N_salt))
 
 			# Create initial configuration using fftool and packmol
-			~/software/lammps/la*22/fftool/fftool $N_wat water.xyz $N_salt Li.xyz $N_salt Cl.xyz -r 55 > /dev/null
+			~/software/lammps/la*22/fftool/fftool $N_wat water.xyz $N Li.xyz $N Cl.xyz -r 55 > /dev/null
 			~/software/lammps/la*22/packmol*/packmol < pack.inp > packmol.out
-			~/software/lammps/la*22/fftool/fftool $N_wat water.xyz $N_salt Li.xyz $N_salt Cl.xyz -r 55 -l > /dev/null
+			~/software/lammps/la*22/fftool/fftool $N_wat water.xyz $N Li.xyz $N Cl.xyz -r 55 -l > /dev/null
 
 			# removing the force data from packmol as I use my own forcefield.data. copy data.lmp remove rest
 			sed -i '12,27d' ./data.lmp
