@@ -1,10 +1,10 @@
 #!/bin/bash
 runfile=$(expr runMD_H)	# Server where to run
-Nruneq=$(expr 1000)	# initiation timestep
-Nrun1=$(expr 250)	# dt*Nrun = 0.25 ns of data per run
-Nrun2=$(expr 1000)	# dt*Nrun = 1ns of data per run
-Nrun3=$(expr 2500)	# dt*Nrun = 2.5ns of data per run
-Nrun4=$(expr 5000)	# dt*Nrun = 2.5ns of data per run
+Nruneq=$(expr 10000)	# initiation timestep
+Nrun1=$(expr 250000)	# dt*Nrun = 0.25 ns of data per run
+Nrun2=$(expr 1000000)	# dt*Nrun = 1ns of data per run
+Nrun3=$(expr 2500000)	# dt*Nrun = 2.5ns of data per run
+Nrun4=$(expr 5000000)	# dt*Nrun = 2.5ns of data per run
 Temp=$(expr 298.15)		# Temperature in K
 Press=$(expr 1)			# Pressure in atm
 
@@ -18,12 +18,12 @@ do
 	mkdir $folder
 	cd $folder
 
-	for dt in 1 #2
+	for dt in 1 2
 	do
 		mkdir dt_$dt
 		cd dt_$dt
 
-		for i in 1 #2 3 4
+		for i in 1 2 3 4
 		do
 			mkdir $i
 			cd $i
@@ -51,7 +51,7 @@ do
 			sed -i 's/run_FOLDER/'$i'/' copy_files.sh
 
 			# Set runMD variables
-			sed -i 's/JOB_NAME/KCl T is '${Temp%.*}' m is '$m' run '$i'/' runMD
+			sed -i 's/JOB_NAME/LiCl T is '${Temp%.*}' m is '$m' run '$i'/' runMD
 			sed -i 's/INPUT/simulation.in/' runMD
 
 			# Creating config folder
