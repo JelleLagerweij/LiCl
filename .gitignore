@@ -7,3 +7,4 @@
 *.wsuo
 *.json
 *.sqlite
+__pycache__
