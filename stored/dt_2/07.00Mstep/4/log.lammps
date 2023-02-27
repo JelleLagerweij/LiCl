@@ -1,0 +1,1845 @@
+LAMMPS (23 Jun 2022 - Update 2)
+WARNING: Using I/O redirection is unreliable with parallel runs. Better use -in switch to read input file. (../lammps.cpp:530)
+####################################################
+# Preprocessing Li2SO4 in water
+#################### SETTING UP ####################
+units real
+dimension 3
+newton on
+boundary p p p
+atom_style full
+
+#################### VARIABLES ####################
+variable Temp equal 298.15    # Temperature in K
+variable Pres equal 1    # Pressure in atm.
+
+variable RandomSeed equal 72 # The random seed for velocity
+variable tstep equal 2 # timestep in fs
+
+#################### NPT ####################
+variable Ninptpre equal 10000 # Pre-initialize the NPT ensemble (very small timesteps)
+variable Ninpt equal 5000000  # Initialize the NPT ensemble
+variable Npnpt equal 5000000  # Production in the NPT ensemble (volume)
+
+#################### NVT ####################
+variable Ninvtpre equal 10000  # Pre-initialize the NVT ensemble (very small timesteps)
+variable Ninvt equal 2500000   # Initialize the NVT ensemble 2.5Mstep
+variable Nrun1 equal 250000  # production in the NVT ensemble (Transport properties)
+variable Nrun2 equal 1000000  # production in the NVT ensemble (Transport properties)
+variable Nrun3 equal 2500000  # production in the NVT ensemble (Transport properties)
+variable Nrun4 equal 5000000  # production in the NVT ensemble (Transport properties)
+
+variable Nf equal 100000      # Nfreq (fix ave/time and thermo)
+variable Ne equal  1          # Nevery (fix ave/time)
+variable Nr equal ${Nf}/${Ne} # Nrepeat (fix ave/time)
+variable Nr equal 100000/${Ne} 
+variable Nr equal 100000/1 
+variable Nd equal ${Nf} 	  # Frequency of outputting positions of atoms in the NVT ensemble
+variable Nd equal 100000 	  
+variable NBR equal ${Npnpt}/100 # Block averaging for density (NPT)
+variable NBR equal 5000000/100 
+
+variable nb equal 10          # Number of blocks (fix ordern)
+variable nbe equal 20         # Number of block elements (fix ordern)
+variable Nvisc equal 5        # Nevery for viscosity (fix ordern: sample data at (Nvisc*2))
+variable Ncond equal 5        # Nevery for Tconductivity (fix ordern: sample data at (Ncond*2))
+variable Ndiff equal 1000     # Nevery for diffusivity (fix ordern: sample data at (Ndiff))
+variable Nwrit equal 100000   # Nwrite for transport properties (fix ordern: write every (Nwrit))
+
+variable Nrdfe equal 1000     # Nevery for RDF (fix ave/time)
+variable Nrdfw equal 1000     # Nwrite for RDF (compute rdf/ext: write every (Nrdfw*Nrdfe))
+variable binnum equal 2000    # Number of bins for RDF
+
+#################### ATOM DEFINITION and FORCEFIELD ####################
+read_data ./data.lmp                     # read the positions
+Reading data file ...
+  orthogonal box = (0 0 0) to (26.379509 26.379509 26.379509)
+  2 by 2 by 3 MPI processor grid
+  reading atoms ...
+  1608 atoms
+  scanning bonds ...
+  2 = max bonds/atom
+  scanning angles ...
+  1 = max angles/atom
+  reading bonds ...
+  1000 bonds
+  reading angles ...
+  500 angles
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     2 = max # of 1-2 neighbors
+     1 = max # of 1-3 neighbors
+     1 = max # of 1-4 neighbors
+     2 = max # of special neighbors
+  special bonds CPU = 0.002 seconds
+  read_data CPU = 0.024 seconds
+include ./forcefield.data                # read the force field
+#--------INTERMOLECULAR POTENTIAL -------------------#
+# --------Developed for MadridT KCl + TIP4P/2005-----#
+
+mass 1 15.9994	# Ow
+mass 2 1.008	# Hw
+mass 3 6.941	# Li
+mass 4 35.453	# Cl
+
+
+pair_style lj/cut/tip4p/long 1 2 1 1 0.1546 10.0
+kspace_style pppm/tip4p 1.0e-5
+pair_modify mix arithmetic tail yes # ATC and Lorentz-Berthelot combining rules
+
+#-----------------Combinations----------------------------
+# atomtype atomtype epsilon sigma
+
+pair_coeff 1 1 0.185200 3.15890    # Ow-Ow
+pair_coeff 1 2 0.000000 0.00000    # Ow-Hw
+pair_coeff 1 3 0.167459 2.12000    # Ow-Li
+pair_coeff 1 4 0.014814 4.23867    # Ow-Cl
+
+pair_coeff 2 2 0.000000 0.00000    # Hw-Hw
+pair_coeff 2 3 0.000000 0.00000    # Hw-K
+pair_coeff 2 4 0.000000 0.00000    # Hw-Cl
+
+pair_coeff 3 3 0.103989 1.43970    # Li-Li
+pair_coeff 3 4 0.306631 2.70000    # Li-Cl
+
+pair_coeff 4 4 0.018385 4.69906    # Cl-Cl
+
+bond_style  harmonic
+bond_coeff 1 2000 0.9572           # Ow-Hw
+
+angle_style harmonic
+angle_coeff 1 200 104.52           # H-Ow-H
+
+#dihedral_style none
+#improper_style none
+
+set type 1 charge -1.1128          # O
+Setting atom values ...
+  500 settings made for charge
+set type 2 charge +0.5564          # OH
+Setting atom values ...
+  1000 settings made for charge
+set type 3 charge +0.8500          # Li
+Setting atom values ...
+  54 settings made for charge
+set type 4 charge -0.8500          # Cl
+Setting atom values ...
+  54 settings made for charge
+
+#################### INITIALIZATION ####################
+group wat type 1		# O water
+500 atoms in group wat
+group Li type 3			# Potasium ion
+54 atoms in group Li
+group Cl type 4			# Chlorine ion
+54 atoms in group Cl
+
+# neigbor lists
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check yes
+
+# velocity-Verlet integrator
+run_style verlet
+
+
+# minimizing the system using the conjugate gradient method
+min_style cg
+min_modify dmax 0.05
+minimize 1.0e-6 1.0e-6 1000 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31127036
+  grid = 25 25 25
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0034097995
+  estimated relative force accuracy = 1.026851e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 6400 1875
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12.3092
+  ghost atom cutoff = 12.3092
+  binsize = 6.1546, bins = 5 5 5
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair lj/cut/tip4p/long, perpetual
+      attributes: half, newton on
+      pair build: half/bin/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 8.944 | 8.964 | 9.004 Mbytes
+   Step          Temp          E_pair         E_mol          TotEng         Press     
+         0   0              641.68376      3.1566538e-05  641.68379      52703.279    
+      1000   0             -15695.723      94.172312     -15601.551     -5299.7128    
+Loop time of 5.93411 on 12 procs for 1000 steps with 1608 atoms
+
+92.2% CPU use with 12 MPI tasks x no OpenMP threads
+
+Minimization stats:
+  Stopping criterion = max iterations
+  Energy initial, next-to-last, final = 
+      641.683787181595  -15601.0710018281   -15601.550789311
+  Force two-norm initial, final = 2112.4623 42.476166
+  Force max component initial, final = 608.22136 9.3161348
+  Final line search alpha, max atom move = 0.0026960674 0.025116928
+  Iterations, force evaluations = 1000 1842
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 3.2611     | 3.6362     | 4.0646     |  12.2 | 61.28
+Bond    | 0.016929   | 0.018082   | 0.019359   |   0.5 |  0.30
+Kspace  | 1.4903     | 1.9164     | 2.2922     |  16.7 | 32.29
+Neigh   | 0.030854   | 0.030904   | 0.031001   |   0.0 |  0.52
+Comm    | 0.22608    | 0.23368    | 0.23831    |   0.7 |  3.94
+Output  | 7.4303e-05 | 8.9644e-05 | 0.00025071 |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 0.09875    |            |       |  1.66
+
+Nlocal:            134 ave         140 max         128 min
+Histogram: 1 1 1 0 3 2 0 2 1 1
+Nghost:        4116.92 ave        4183 max        4017 min
+Histogram: 1 0 1 0 3 0 2 1 1 3
+Neighs:        45853.6 ave       49043 max       42855 min
+Histogram: 3 1 0 1 0 1 3 1 0 2
+
+Total # of neighbors = 550243
+Ave neighs/atom = 342.19092
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 16
+Dangerous builds = 0
+reset_timestep 0
+
+
+# initializing velocities
+velocity all create ${Temp} ${RandomSeed}
+velocity all create 298.15 ${RandomSeed}
+velocity all create 298.15 72
+
+# rate of writing thermal properties to the log file
+thermo_style custom step density temp press etotal
+thermo_modify flush yes
+thermo ${Nf}
+thermo 100000
+
+#################### 2) Initialize the NPT ensemble ####################
+######### Go to the correct temperature now ant initiate that ##########
+fix constrain all shake 1.0e-6 1000 0 b 1 a 1
+       0 = # of size 2 clusters
+       0 = # of size 3 clusters
+       0 = # of size 4 clusters
+     500 = # of frozen angles
+  find clusters CPU = 0.001 seconds
+fix integrate all npt temp ${Temp} ${Temp} 10.0 iso ${Pres} ${Pres} 100.0
+fix integrate all npt temp 298.15 ${Temp} 10.0 iso ${Pres} ${Pres} 100.0
+fix integrate all npt temp 298.15 298.15 10.0 iso ${Pres} ${Pres} 100.0
+fix integrate all npt temp 298.15 298.15 10.0 iso 1 ${Pres} 100.0
+fix integrate all npt temp 298.15 298.15 10.0 iso 1 1 100.0
+
+
+# Initializing the whole system with very small timesteps in the NPT ensemble
+timestep 0.001
+run ${Ninptpre}
+run 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31127036
+  grid = 25 25 25
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0034097995
+  estimated relative force accuracy = 1.026851e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 6400 1875
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.694 | 8.714 | 8.754 Mbytes
+   Step        Density          Temp          Press          TotEng    
+         0   1.0219065      432.81576     -417214.06     -14267.536    
+     10000   1.0301031      175.02874      1593.1414     -14465.641    
+Loop time of 43.0722 on 12 procs for 10000 steps with 1608 atoms
+
+Performance: 0.020 ns/day, 1196.449 hours/ns, 232.169 timesteps/s
+91.9% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 21.49      | 24.28      | 26.954     |  30.5 | 56.37
+Bond    | 0.0070994  | 0.0079816  | 0.0097441  |   0.8 |  0.02
+Kspace  | 7.9873     | 10.662     | 13.459     |  46.1 | 24.75
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 1.1936     | 1.2239     | 1.2504     |   1.6 |  2.84
+Output  | 6.0793e-05 | 8.026e-05  | 0.00028715 |   0.0 |  0.00
+Modify  | 4.6406     | 5.1601     | 6.7502     |  22.1 | 11.98
+Other   |            | 1.738      |            |       |  4.04
+
+Nlocal:            134 ave         139 max         128 min
+Histogram: 2 0 1 0 2 3 0 0 1 3
+Nghost:         4126.5 ave        4191 max        4024 min
+Histogram: 1 0 1 0 2 1 2 1 2 2
+Neighs:        45850.9 ave       48798 max       41816 min
+Histogram: 1 0 2 1 1 0 1 4 0 2
+
+Total # of neighbors = 550211
+Ave neighs/atom = 342.17102
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 0
+Dangerous builds = 0
+timestep 0.01
+run ${Ninptpre}
+run 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31146132
+  grid = 25 25 25
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0033828978
+  estimated relative force accuracy = 1.0187496e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 6400 1875
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.694 | 8.714 | 8.754 Mbytes
+   Step        Density          Temp          Press          TotEng    
+     10000   1.0301031      175.02874     -157048.42     -14465.641    
+     20000   1.0270572      302.67657      554.28979     -13446.2      
+Loop time of 43.785 on 12 procs for 10000 steps with 1608 atoms
+
+Performance: 0.197 ns/day, 121.625 hours/ns, 228.389 timesteps/s
+90.9% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 22.301     | 24.024     | 27.569     |  31.8 | 54.87
+Bond    | 0.0072781  | 0.007975   | 0.0092307  |   0.6 |  0.02
+Kspace  | 8.0303     | 11.567     | 13.306     |  46.0 | 26.42
+Neigh   | 0.007575   | 0.0076045  | 0.0076207  |   0.0 |  0.02
+Comm    | 1.2343     | 1.2626     | 1.2872     |   1.4 |  2.88
+Output  | 6.2017e-05 | 7.5522e-05 | 0.00021613 |   0.0 |  0.00
+Modify  | 4.6522     | 5.1758     | 6.7679     |  22.1 | 11.82
+Other   |            | 1.74       |            |       |  3.97
+
+Nlocal:            134 ave         145 max         127 min
+Histogram: 1 3 1 1 1 3 0 1 0 1
+Nghost:        4134.33 ave        4229 max        4011 min
+Histogram: 1 2 1 0 0 0 2 3 2 1
+Neighs:        45943.4 ave       51688 max       41616 min
+Histogram: 1 0 2 5 0 2 0 1 0 1
+
+Total # of neighbors = 551321
+Ave neighs/atom = 342.86132
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 4
+Dangerous builds = 0
+timestep 0.1
+run ${Ninptpre}
+run 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31139056
+  grid = 25 25 25
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0033928437
+  estimated relative force accuracy = 1.0217448e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 6400 1875
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.694 | 8.714 | 8.754 Mbytes
+   Step        Density          Temp          Press          TotEng    
+     20000   1.0270572      302.67657     -13831.726     -13446.2      
+     30000   1.0756826      294.3299       656.74552     -13638.266    
+Loop time of 44.9505 on 12 procs for 10000 steps with 1608 atoms
+
+Performance: 1.922 ns/day, 12.486 hours/ns, 222.467 timesteps/s
+91.3% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 23.548     | 25.266     | 28.025     |  27.2 | 56.21
+Bond    | 0.0075716  | 0.008256   | 0.0095776  |   0.6 |  0.02
+Kspace  | 8.6068     | 11.368     | 13.095     |  40.5 | 25.29
+Neigh   | 0.089872   | 0.089992   | 0.09018    |   0.0 |  0.20
+Comm    | 1.2336     | 1.2776     | 1.3163     |   2.0 |  2.84
+Output  | 6.2204e-05 | 7.6111e-05 | 0.00022051 |   0.0 |  0.00
+Modify  | 4.6904     | 5.202      | 6.7905     |  22.0 | 11.57
+Other   |            | 1.739      |            |       |  3.87
+
+Nlocal:            134 ave         145 max         121 min
+Histogram: 2 0 1 1 1 2 0 1 3 1
+Nghost:        4215.25 ave        4268 max        4161 min
+Histogram: 2 0 1 2 0 1 3 1 1 1
+Neighs:        48166.8 ave       55869 max       42774 min
+Histogram: 3 1 0 0 4 1 0 2 0 1
+
+Total # of neighbors = 578002
+Ave neighs/atom = 359.45398
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 45
+Dangerous builds = 0
+timestep 0.2
+run ${Ninptpre}
+run 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31249306
+  grid = 25 25 25
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0032408756
+  estimated relative force accuracy = 9.7598005e-06
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 6400 1875
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.694 | 8.714 | 8.754 Mbytes
+   Step        Density          Temp          Press          TotEng    
+     30000   1.0756826      294.3299      -3761.132      -13638.27     
+     40000   1.1029109      277.70652     -185.48765     -13833.595    
+Loop time of 46.362 on 12 procs for 10000 steps with 1608 atoms
+
+Performance: 3.727 ns/day, 6.439 hours/ns, 215.694 timesteps/s
+92.0% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 24.211     | 26.774     | 29.061     |  29.8 | 57.75
+Bond    | 0.0073657  | 0.0083836  | 0.010501   |   1.0 |  0.02
+Kspace  | 8.8345     | 11.121     | 13.699     |  46.3 | 23.99
+Neigh   | 0.17629    | 0.17648    | 0.17683    |   0.0 |  0.38
+Comm    | 1.2883     | 1.3165     | 1.345      |   1.5 |  2.84
+Output  | 6.2232e-05 | 7.6857e-05 | 0.00021663 |   0.0 |  0.00
+Modify  | 4.7012     | 5.2218     | 6.8102     |  22.0 | 11.26
+Other   |            | 1.744      |            |       |  3.76
+
+Nlocal:            134 ave         141 max         129 min
+Histogram: 3 1 1 0 0 5 0 1 0 1
+Nghost:        4274.33 ave        4322 max        4228 min
+Histogram: 1 1 2 1 2 0 0 3 1 1
+Neighs:        49302.2 ave       53197 max       44497 min
+Histogram: 3 0 1 0 0 2 1 2 0 3
+
+Total # of neighbors = 591627
+Ave neighs/atom = 367.92724
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 85
+Dangerous builds = 0
+timestep 0.5
+run ${Ninptpre}
+run 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.3101649
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037949655
+  estimated relative force accuracy = 1.1428426e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.66 | 8.666 | 8.669 Mbytes
+   Step        Density          Temp          Press          TotEng    
+     40000   1.1029109      277.70652     -1799.6143     -13833.601    
+     50000   1.1287643      300.91064      956.79398     -13840.578    
+Loop time of 45.3691 on 12 procs for 10000 steps with 1608 atoms
+
+Performance: 9.522 ns/day, 2.521 hours/ns, 220.414 timesteps/s
+93.3% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 25.333     | 27.289     | 30.459     |  31.5 | 60.15
+Bond    | 0.0072825  | 0.0081176  | 0.0093062  |   0.6 |  0.02
+Kspace  | 7.7468     | 10.928     | 12.88      |  49.8 | 24.09
+Neigh   | 0.47283    | 0.47332    | 0.4737     |   0.0 |  1.04
+Comm    | 1.3283     | 1.3466     | 1.3634     |   0.9 |  2.97
+Output  | 6.2478e-05 | 7.6281e-05 | 0.00021705 |   0.0 |  0.00
+Modify  | 4.533      | 4.8225     | 5.1522     |   5.9 | 10.63
+Other   |            | 0.5022     |            |       |  1.11
+
+Nlocal:            134 ave         142 max         117 min
+Histogram: 1 0 2 0 0 0 2 0 3 4
+Nghost:         4342.5 ave        4387 max        4303 min
+Histogram: 1 2 2 1 1 1 1 0 2 1
+Neighs:        50635.8 ave       58538 max       44058 min
+Histogram: 2 1 0 3 1 1 1 1 1 1
+
+Total # of neighbors = 607629
+Ave neighs/atom = 377.87873
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 221
+Dangerous builds = 0
+reset_timestep 0
+
+# continuing the initialization with the final value of timestep
+unfix integrate
+fix integrate all npt temp ${Temp} ${Temp} 100.0 iso ${Pres} ${Pres} 1000.0
+fix integrate all npt temp 298.15 ${Temp} 100.0 iso ${Pres} ${Pres} 1000.0
+fix integrate all npt temp 298.15 298.15 100.0 iso ${Pres} ${Pres} 1000.0
+fix integrate all npt temp 298.15 298.15 100.0 iso 1 ${Pres} 1000.0
+fix integrate all npt temp 298.15 298.15 100.0 iso 1 1 1000.0
+
+timestep ${tstep}
+timestep 2
+
+
+run ${Ninpt}
+run 5000000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31072181
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037086285
+  estimated relative force accuracy = 1.1168424e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.661 | 8.666 | 8.669 Mbytes
+   Step        Density          Temp          Press          TotEng    
+         0   1.1287643      300.91064      1427.6235     -13840.576    
+    100000   1.1148567      293.81253      239.08805     -13919.103    
+    200000   1.1258606      299.57022     -243.03659     -13907.515    
+    300000   1.1115635      291.2127       491.48945     -13923.058    
+    400000   1.1203172      311.99041      980.85138     -13835.861    
+    500000   1.1198285      298.55124     -191.84562     -13924.437    
+    600000   1.1099733      294.46658     -415.13708     -13931.728    
+    700000   1.1215532      296.01318     -319.65817     -13910.043    
+    800000   1.1059152      302.91589     -1134.5655     -13877.147    
+    900000   1.122682       293.64893     -507.60083     -13945.501    
+   1000000   1.1123466      297.04137     -704.83486     -13954.652    
+   1100000   1.1067188      284.94819      1321.6991     -13910.369    
+   1200000   1.1134783      311.77246      516.10955     -13899.334    
+   1300000   1.1260786      287.09027      917.25531     -13988.63     
+   1400000   1.10327        294.73026      93.900455     -13874.58     
+   1500000   1.1192684      303.51216      358.15864     -13966.143    
+   1600000   1.1247961      297.81267      211.73776     -13949.852    
+   1700000   1.1282992      302.73196      630.3823      -13924.693    
+   1800000   1.1067364      294.94622     -277.93051     -13928.444    
+   1900000   1.1183517      292.69124     -1227.9383     -13927.375    
+   2000000   1.0989357      299.41099     -1005.6068     -13941.209    
+   2100000   1.1152712      309.56305     -86.699757     -13865.603    
+   2200000   1.1081088      315.92751     -83.196464     -13842.501    
+   2300000   1.1086222      298.09834     -137.8957      -13906.542    
+   2400000   1.1097683      293.92155     -237.04659     -13957.345    
+   2500000   1.1074061      302.56261     -932.86939     -13784.182    
+   2600000   1.129505       286.46019      212.1337      -13946.771    
+   2700000   1.1177875      291.56016     -802.86207     -13945.471    
+   2800000   1.1168787      304.31403     -26.07109      -13862.82     
+   2900000   1.1234413      309.40919     -357.21362     -13895.585    
+   3000000   1.1181577      301.30192     -58.693481     -13934.596    
+   3100000   1.1014678      288.48375     -282.98367     -13975.04     
+   3200000   1.10916        296.91125     -21.474402     -13896.959    
+   3300000   1.1250975      301.27881      607.80101     -13902.104    
+   3400000   1.1243384      303.04111     -446.39499     -13911.45     
+   3500000   1.1218851      296.82231      479.30838     -13903.728    
+   3600000   1.1035716      308.77042     -333.0651      -13860.447    
+   3700000   1.1093536      307.76273     -385.16161     -13921.194    
+   3800000   1.1213303      307.30858     -1473.9718     -13895.52     
+   3900000   1.0945227      288.92083     -827.93969     -13830.849    
+   4000000   1.1079666      300.33077      216.03108     -13969.381    
+   4100000   1.1250108      290.33882     -238.53858     -13948.406    
+   4200000   1.1181162      296.76863     -610.84501     -13873.896    
+   4300000   1.1168648      304.6361       116.12375     -13858.334    
+   4400000   1.120036       299.39537      331.09863     -13944.726    
+   4500000   1.1054847      287.81912     -810.67768     -13980.566    
+   4600000   1.106293       292.27112      295.46468     -13878.333    
+   4700000   1.1145471      294.62867     -955.03921     -13904.911    
+   4800000   1.1202875      297.52898     -644.63773     -13964.263    
+   4900000   1.121925       299.60733     -8.5021507     -13967.344    
+   5000000   1.1058109      286.95698     -26.081299     -13941.899    
+Loop time of 23520.6 on 12 procs for 5000000 steps with 1608 atoms
+
+Performance: 36.734 ns/day, 0.653 hours/ns, 212.580 timesteps/s
+93.8% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 12950      | 13964      | 14587      | 497.2 | 59.37
+Bond    | 3.6498     | 3.9844     | 4.397      |  11.1 |  0.02
+Kspace  | 4644.6     | 5267.9     | 6282.8     | 811.5 | 22.40
+Neigh   | 858.93     | 859.57     | 860.33     |   1.5 |  3.65
+Comm    | 727.94     | 736.21     | 749.55     |  21.4 |  3.13
+Output  | 0.0031519  | 0.0038418  | 0.011073   |   3.5 |  0.00
+Modify  | 2291.7     | 2436.1     | 2600.4     | 130.0 | 10.36
+Other   |            | 252.6      |            |       |  1.07
+
+Nlocal:            134 ave         144 max         124 min
+Histogram: 1 0 3 0 0 3 1 3 0 1
+Nghost:        4295.17 ave        4324 max        4266 min
+Histogram: 1 0 0 5 2 0 1 1 1 1
+Neighs:        49550.5 ave       55385 max       46367 min
+Histogram: 3 2 1 1 2 1 0 0 1 1
+
+Total # of neighbors = 594606
+Ave neighs/atom = 369.77985
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 401899
+Dangerous builds = 0
+reset_timestep 0
+
+
+#################### 3) Obtaining average volume in NPT ######################
+# Creating restart files
+restart ${Nf} 1.restart 2.restart
+restart 100000 1.restart 2.restart
+
+# Getting the average volume of the system
+variable Volume equal vol
+fix VoluAve all ave/time 1 ${Npnpt} ${Npnpt} v_Volume file volume.dat
+fix VoluAve all ave/time 1 5000000 ${Npnpt} v_Volume file volume.dat
+fix VoluAve all ave/time 1 5000000 5000000 v_Volume file volume.dat
+
+variable Dens equal density
+fix DensAve all ave/time 1 ${NBR} ${NBR} v_Dens file density.dat
+fix DensAve all ave/time 1 50000 ${NBR} v_Dens file density.dat
+fix DensAve all ave/time 1 50000 50000 v_Dens file density.dat
+
+compute T1 all temp
+fix TempAve1 all ave/time 1 ${NBR} ${NBR} c_T1 file temperatureNPT.dat
+fix TempAve1 all ave/time 1 50000 ${NBR} c_T1 file temperatureNPT.dat
+fix TempAve1 all ave/time 1 50000 50000 c_T1 file temperatureNPT.dat
+
+compute P1 all pressure T1
+fix PressAve1 all ave/time 1 ${NBR} ${NBR} c_P1 file pressureNPT.dat
+fix PressAve1 all ave/time 1 50000 ${NBR} c_P1 file pressureNPT.dat
+fix PressAve1 all ave/time 1 50000 50000 c_P1 file pressureNPT.dat
+
+run ${Npnpt}
+run 5000000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31022808
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037850782
+  estimated relative force accuracy = 1.139865e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.661 | 8.666 | 8.67 Mbytes
+   Step        Density          Temp          Press          TotEng    
+         0   1.1058109      286.95698      4.3375735     -13941.9      
+    100000   1.1134637      286.91251      713.46377     -13935.726    
+    200000   1.1033124      294.81347     -942.03711     -13974.592    
+    300000   1.1107349      290.04738     -311.70118     -13846.956    
+    400000   1.1055761      300.18954     -13.801675     -13953.348    
+    500000   1.1302589      299.33397      595.27199     -13947.036    
+    600000   1.1143976      312.47312     -1018.2752     -13838.779    
+    700000   1.1153762      297.49811     -184.20947     -13902.685    
+    800000   1.1038495      297.83253     -36.099298     -13868.714    
+    900000   1.1178262      292.71222      774.28602     -13932.279    
+   1000000   1.1053953      305.62899     -1207.8241     -13844.02     
+   1100000   1.1150283      303.28023     -1081.9505     -13885.646    
+   1200000   1.1223849      295.66667      816.2071      -13917.657    
+   1300000   1.1151627      304.54952     -1770.1296     -13874.849    
+   1400000   1.1297372      305.14631     -814.73935     -13929.565    
+   1500000   1.1019518      307.79979     -728.52149     -13877.75     
+   1600000   1.1178441      307.19839     -56.762256     -13938.076    
+   1700000   1.1119711      299.73167     -824.26405     -13892.337    
+   1800000   1.1248616      305.16998      1793.8648     -13929.956    
+   1900000   1.1130817      297.62473      1337.6977     -13938.274    
+   2000000   1.1168212      300.58643     -504.16641     -13934.694    
+   2100000   1.1292058      302.71131      496.72429     -13875.427    
+   2200000   1.104883       303.19542      1058.3071     -13840.819    
+   2300000   1.093449       297.9528      -69.020928     -13896.592    
+   2400000   1.1199847      293.07074      1118.6539     -14003.447    
+   2500000   1.1180979      298.89379      805.56677     -13897.798    
+   2600000   1.1150695      314.82054      455.03123     -13820.46     
+   2700000   1.1137245      286.73497      795.70128     -13931.182    
+   2800000   1.1110836      293.87871     -157.8896      -13930.714    
+   2900000   1.1137796      301.59057      900.7445      -13852.938    
+   3000000   1.1303361      298.38358      767.03349     -13875.348    
+   3100000   1.1143664      289.54704      427.16011     -13937.067    
+   3200000   1.1156318      298.44433      206.70984     -13842.816    
+   3300000   1.1156886      310.92279      475.25527     -13850.277    
+   3400000   1.1225665      297.1517      -982.12539     -13952.961    
+   3500000   1.1118552      295.76054     -1427.8189     -13941.134    
+   3600000   1.1143849      291.68932     -343.5929      -13920.693    
+   3700000   1.1009206      295.27881     -875.08017     -13932.832    
+   3800000   1.1225887      296.87522      434.20924     -13966.525    
+   3900000   1.1031394      306.36961      55.710222     -13858.252    
+   4000000   1.131036       291.48486      721.04345     -13883.51     
+   4100000   1.1005507      296.91319     -173.12386     -13937.686    
+   4200000   1.1206648      291.75508     -593.87307     -13952.375    
+   4300000   1.1169342      304.43504      170.9764      -13925.876    
+   4400000   1.1065968      300.31312     -607.91171     -13948.132    
+   4500000   1.1136682      296.20568     -22.862787     -13906.579    
+   4600000   1.1286934      288.35144     -817.7356      -13934.963    
+   4700000   1.12665        290.76034      334.41085     -13945.895    
+   4800000   1.1089132      304.00714     -166.1591      -13891.002    
+   4900000   1.1102206      291.76109      27.815353     -13941.354    
+   5000000   1.1079073      303.44035      764.51315     -13912.416    
+Loop time of 23666.5 on 12 procs for 5000000 steps with 1608 atoms
+
+Performance: 36.507 ns/day, 0.657 hours/ns, 211.269 timesteps/s
+93.8% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 12991      | 13968      | 14616      | 492.7 | 59.02
+Bond    | 3.7269     | 4.1187     | 4.7248     |  13.6 |  0.02
+Kspace  | 4555.7     | 5210.3     | 6192.3     | 808.9 | 22.02
+Neigh   | 856.02     | 856.72     | 857.59     |   1.7 |  3.62
+Comm    | 730.15     | 738.41     | 751.88     |  21.2 |  3.12
+Output  | 0.22315    | 0.22364    | 0.22856    |   0.3 |  0.00
+Modify  | 2491.7     | 2635.5     | 2800.4     | 125.0 | 11.14
+Other   |            | 253.7      |            |       |  1.07
+
+Nlocal:            134 ave         144 max         121 min
+Histogram: 2 0 0 1 0 4 1 1 2 1
+Nghost:         4295.5 ave        4353 max        4246 min
+Histogram: 1 1 1 3 2 0 2 0 0 2
+Neighs:        49645.1 ave       54522 max       46913 min
+Histogram: 3 1 2 1 1 2 0 1 0 1
+
+Total # of neighbors = 595741
+Ave neighs/atom = 370.4857
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 402079
+Dangerous builds = 0
+
+#################### 4) Initializing the NVT ensemble ####################
+# scaling the size of the system to the average volume
+variable sidesize equal (f_VoluAve^(1.0/3.0))    # get the volume
+variable xlow equal xlo
+variable ylow equal ylo
+variable zlow equal zlo
+variable xhig equal (xlo+${sidesize})
+variable xhig equal (xlo+25.6297567002333)
+variable yhig equal (ylo+${sidesize})
+variable yhig equal (ylo+25.6297567002333)
+variable zhig equal (zlo+${sidesize})
+variable zhig equal (zlo+25.6297567002333)
+change_box all x final ${xlow} ${xhig} y final ${ylow} ${yhig} z final ${zlow} ${zhig}
+change_box all x final 0.350515534511523 ${xhig} y final ${ylow} ${yhig} z final ${zlow} ${zhig}
+change_box all x final 0.350515534511523 25.9802722347448 y final ${ylow} ${yhig} z final ${zlow} ${zhig}
+change_box all x final 0.350515534511523 25.9802722347448 y final 0.350515534511523 ${yhig} z final ${zlow} ${zhig}
+change_box all x final 0.350515534511523 25.9802722347448 y final 0.350515534511523 25.9802722347448 z final ${zlow} ${zhig}
+change_box all x final 0.350515534511523 25.9802722347448 y final 0.350515534511523 25.9802722347448 z final 0.350515534511523 ${zhig}
+change_box all x final 0.350515534511523 25.9802722347448 y final 0.350515534511523 25.9802722347448 z final 0.350515534511523 25.9802722347448
+Changing box ...
+  orthogonal box = (0.35051553 0.35051553 0.35051553) to (25.980272 26.028993 26.028993)
+  orthogonal box = (0.35051553 0.35051553 0.35051553) to (25.980272 25.980272 26.028993)
+  orthogonal box = (0.35051553 0.35051553 0.35051553) to (25.980272 25.980272 25.980272)
+unfix DensAve
+unfix VoluAve
+unfix TempAve1
+unfix PressAve1
+
+# changing the ensemble to NVT
+unfix integrate
+fix integrate all nvt temp ${Temp} ${Temp} 10.0
+fix integrate all nvt temp 298.15 ${Temp} 10.0
+fix integrate all nvt temp 298.15 298.15 10.0
+
+timestep 0.001
+run ${Ninvtpre}
+run 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.661 | 8.667 | 8.67 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   5000000   1.1142376      303.44035      40979.644     -13868.895    
+   5010000   1.1142376      295.83891      1724.2825     -13919.514    
+Loop time of 29.9616 on 12 procs for 10000 steps with 1608 atoms
+
+Performance: 0.029 ns/day, 832.267 hours/ns, 333.760 timesteps/s
+95.1% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 17.514     | 18.914     | 20.451     |  20.5 | 63.13
+Bond    | 0.002624   | 0.0040345  | 0.005357   |   1.0 |  0.01
+Kspace  | 7.0724     | 8.5626     | 9.8982     |  29.6 | 28.58
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 1.2261     | 1.27       | 1.3216     |   2.5 |  4.24
+Output  | 6.2873e-05 | 7.6571e-05 | 0.0002137  |   0.0 |  0.00
+Modify  | 1.0311     | 1.0388     | 1.0533     |   0.6 |  3.47
+Other   |            | 0.1717     |            |       |  0.57
+
+Nlocal:            134 ave         143 max         122 min
+Histogram: 2 0 0 1 0 3 2 0 2 2
+Nghost:        4301.25 ave        4357 max        4256 min
+Histogram: 1 1 2 3 1 0 1 1 0 2
+Neighs:        49929.5 ave       54745 max       47235 min
+Histogram: 4 0 3 1 0 1 1 1 0 1
+
+Total # of neighbors = 599154
+Ave neighs/atom = 372.60821
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 0
+Dangerous builds = 0
+timestep 0.01
+run ${Ninvtpre}
+run 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.661 | 8.667 | 8.67 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   5010000   1.1142376      295.83891      1724.2933     -13919.514    
+   5020000   1.1142376      294.92911      1214.1715     -13889.042    
+Loop time of 30.0826 on 12 procs for 10000 steps with 1608 atoms
+
+Performance: 0.287 ns/day, 83.563 hours/ns, 332.418 timesteps/s
+94.8% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 17.723     | 18.902     | 20.229     |  18.9 | 62.83
+Bond    | 0.0027116  | 0.0041088  | 0.0051176  |   0.9 |  0.01
+Kspace  | 7.3658     | 8.656      | 9.7898     |  27.0 | 28.77
+Neigh   | 0.0080775  | 0.0080853  | 0.0080936  |   0.0 |  0.03
+Comm    | 1.2345     | 1.2852     | 1.3416     |   3.0 |  4.27
+Output  | 6.3488e-05 | 7.7982e-05 | 0.00022087 |   0.0 |  0.00
+Modify  | 1.0522     | 1.0576     | 1.0653     |   0.4 |  3.52
+Other   |            | 0.1697     |            |       |  0.56
+
+Nlocal:            134 ave         145 max         124 min
+Histogram: 1 2 0 1 2 2 2 0 1 1
+Nghost:        4302.08 ave        4340 max        4246 min
+Histogram: 1 0 1 1 3 0 1 0 1 4
+Neighs:        49935.4 ave       55256 max       47144 min
+Histogram: 2 3 2 0 1 2 0 1 0 1
+
+Total # of neighbors = 599225
+Ave neighs/atom = 372.65236
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 4
+Dangerous builds = 0
+timestep 0.1
+run ${Ninvtpre}
+run 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.661 | 8.667 | 8.67 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   5020000   1.1142376      294.92911      1213.7884     -13889.042    
+   5030000   1.1142376      285.22128     -72.659428     -13948.964    
+Loop time of 30.1821 on 12 procs for 10000 steps with 1608 atoms
+
+Performance: 2.863 ns/day, 8.384 hours/ns, 331.322 timesteps/s
+94.9% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 17.628     | 18.945     | 20.408     |  17.9 | 62.77
+Bond    | 0.0028157  | 0.0042688  | 0.005789   |   1.1 |  0.01
+Kspace  | 7.1715     | 8.5878     | 9.8615     |  25.7 | 28.45
+Neigh   | 0.085776   | 0.085815   | 0.085848   |   0.0 |  0.28
+Comm    | 1.2561     | 1.3219     | 1.3706     |   2.6 |  4.38
+Output  | 6.3823e-05 | 7.7782e-05 | 0.00021694 |   0.0 |  0.00
+Modify  | 1.0553     | 1.0669     | 1.0841     |   0.8 |  3.53
+Other   |            | 0.1706     |            |       |  0.57
+
+Nlocal:            134 ave         145 max         124 min
+Histogram: 1 1 2 1 3 0 1 1 0 2
+Nghost:        4321.17 ave        4361 max        4268 min
+Histogram: 2 0 0 0 3 1 1 3 0 2
+Neighs:        49927.8 ave       53102 max       47381 min
+Histogram: 4 1 0 0 1 1 2 1 1 1
+
+Total # of neighbors = 599133
+Ave neighs/atom = 372.59515
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 42
+Dangerous builds = 0
+timestep 0.2
+run ${Ninvtpre}
+run 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.661 | 8.667 | 8.67 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   5030000   1.1142376      285.22128     -73.595436     -13948.964    
+   5040000   1.1142376      302.26113      482.93555     -13900.421    
+Loop time of 30.8008 on 12 procs for 10000 steps with 1608 atoms
+
+Performance: 5.610 ns/day, 4.278 hours/ns, 324.667 timesteps/s
+93.9% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 17.573     | 19.013     | 20.775     |  19.3 | 61.73
+Bond    | 0.0028652  | 0.0041099  | 0.0051806  |   0.9 |  0.01
+Kspace  | 7.364      | 9.0814     | 10.496     |  27.2 | 29.48
+Neigh   | 0.16039    | 0.16051    | 0.16066    |   0.0 |  0.52
+Comm    | 1.2698     | 1.3096     | 1.3433     |   2.3 |  4.25
+Output  | 6.6139e-05 | 7.9892e-05 | 0.00021737 |   0.0 |  0.00
+Modify  | 1.0546     | 1.0618     | 1.0712     |   0.6 |  3.45
+Other   |            | 0.1704     |            |       |  0.55
+
+Nlocal:            134 ave         141 max         124 min
+Histogram: 1 0 0 0 2 4 2 1 1 1
+Nghost:           4304 ave        4350 max        4278 min
+Histogram: 5 1 0 1 1 1 0 1 0 2
+Neighs:        49956.1 ave       53845 max       46797 min
+Histogram: 1 3 3 0 0 0 1 2 0 2
+
+Total # of neighbors = 599473
+Ave neighs/atom = 372.80659
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 79
+Dangerous builds = 0
+timestep 0.5
+run ${Ninvtpre}
+run 10000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.661 | 8.667 | 8.67 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   5040000   1.1142376      302.26113      482.07474     -13900.421    
+   5050000   1.1142376      308.73813      1180.4868     -13940.622    
+Loop time of 31.0075 on 12 procs for 10000 steps with 1608 atoms
+
+Performance: 13.932 ns/day, 1.723 hours/ns, 322.503 timesteps/s
+94.4% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 17.271     | 19.188     | 20.587     |  20.7 | 61.88
+Bond    | 0.0028039  | 0.0041955  | 0.0048289  |   0.9 |  0.01
+Kspace  | 7.4114     | 8.7987     | 10.679     |  29.8 | 28.38
+Neigh   | 0.42038    | 0.42066    | 0.421      |   0.0 |  1.36
+Comm    | 1.2903     | 1.3481     | 1.3914     |   2.5 |  4.35
+Output  | 6.3961e-05 | 7.7926e-05 | 0.00022082 |   0.0 |  0.00
+Modify  | 1.0698     | 1.0769     | 1.0916     |   0.6 |  3.47
+Other   |            | 0.1712     |            |       |  0.55
+
+Nlocal:            134 ave         148 max         121 min
+Histogram: 1 0 2 2 3 1 0 1 1 1
+Nghost:           4322 ave        4364 max        4277 min
+Histogram: 1 0 1 4 0 1 2 1 1 1
+Neighs:        49932.4 ave       54034 max       44047 min
+Histogram: 2 1 0 0 1 2 0 2 1 3
+
+Total # of neighbors = 599189
+Ave neighs/atom = 372.62998
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 202
+Dangerous builds = 0
+
+unfix integrate
+fix integrate all nvt temp ${Temp} ${Temp} 100.0
+fix integrate all nvt temp 298.15 ${Temp} 100.0
+fix integrate all nvt temp 298.15 298.15 100.0
+# continuing the initialization with the final value of timestep
+timestep ${tstep}
+timestep 2
+
+run ${Ninvt}
+run 2500000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 8.661 | 8.667 | 8.67 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   5050000   1.1142376      308.73813      1167.4223     -13940.622    
+   5100000   1.1142376      295.17287     -561.2008      -13975.912    
+   5200000   1.1142376      316.58188      499.66714     -13887.931    
+   5300000   1.1142376      287.1166       50.147531     -13962.293    
+   5400000   1.1142376      293.3778      -91.640952     -13929.252    
+   5500000   1.1142376      297.56397      520.66246     -13902.59     
+   5600000   1.1142376      303.85451      105.61127     -13853.112    
+   5700000   1.1142376      306.03675     -495.90353     -13932.631    
+   5800000   1.1142376      286.56353      157.33735     -13929.129    
+   5900000   1.1142376      292.17618      410.103       -13898.816    
+   6000000   1.1142376      303.48567      1379.4629     -13901.603    
+   6100000   1.1142376      294.58374     -442.68966     -14011.238    
+   6200000   1.1142376      289.89318      310.53054     -14055.843    
+   6300000   1.1142376      295.20771      386.12405     -13870.958    
+   6400000   1.1142376      288.59749      115.08808     -13928.567    
+   6500000   1.1142376      305.66662     -934.11782     -13926.115    
+   6600000   1.1142376      304.42205      798.82392     -13915.654    
+   6700000   1.1142376      302.2812       97.590214     -13806.595    
+   6800000   1.1142376      285.61022     -265.04623     -13946.363    
+   6900000   1.1142376      319.325        219.04031     -13879.758    
+   7000000   1.1142376      307.61976      498.56086     -13900.214    
+   7100000   1.1142376      305.41453     -1068.4344     -13883.194    
+   7200000   1.1142376      298.37121      147.5456      -13953.751    
+   7300000   1.1142376      295.53333     -472.52176     -13985.862    
+   7400000   1.1142376      306.16465      475.68055     -13880.753    
+   7500000   1.1142376      299.78675      303.11732     -13955.827    
+   7550000   1.1142376      300.30589     -108.35702     -13891.719    
+Loop time of 8359.09 on 12 procs for 2500000 steps with 1608 atoms
+
+Performance: 51.680 ns/day, 0.464 hours/ns, 299.076 timesteps/s
+93.7% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 4536.4     | 4883.4     | 5123.8     | 314.5 | 58.42
+Bond    | 0.70924    | 1.0283     | 1.2694     |  14.9 |  0.01
+Kspace  | 2121.3     | 2356.5     | 2698.4     | 447.8 | 28.19
+Neigh   | 422.77     | 423.11     | 423.47     |   1.1 |  5.06
+Comm    | 358.71     | 369.28     | 374.15     |  21.2 |  4.42
+Output  | 0.11016    | 0.11042    | 0.11318    |   0.2 |  0.00
+Modify  | 280.77     | 282.4      | 285.02     |   7.4 |  3.38
+Other   |            | 43.24      |            |       |  0.52
+
+Nlocal:            134 ave         147 max         124 min
+Histogram: 1 1 1 3 0 4 1 0 0 1
+Nghost:        4279.75 ave        4301 max        4257 min
+Histogram: 1 0 2 1 0 3 2 1 1 1
+Neighs:        49923.6 ave       55107 max       43293 min
+Histogram: 1 0 1 1 1 3 1 1 1 2
+
+Total # of neighbors = 599083
+Ave neighs/atom = 372.56405
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 198931
+Dangerous builds = 0
+
+reset_timestep 0
+
+#################### 2) Production in NVT ensemble #####################
+# computing average total energy, pontential energy, temperature, and pressure over time
+variable TotEn equal etotal
+fix TEAve all ave/time ${Ne} ${Nr} ${Nf} v_TotEn file TotalE.dat
+fix TEAve all ave/time 1 ${Nr} ${Nf} v_TotEn file TotalE.dat
+fix TEAve all ave/time 1 100000 ${Nf} v_TotEn file TotalE.dat
+fix TEAve all ave/time 1 100000 100000 v_TotEn file TotalE.dat
+
+variable PotEn equal pe
+fix PEAve all ave/time ${Ne} ${Nr} ${Nf} v_PotEn file PotenE.dat
+fix PEAve all ave/time 1 ${Nr} ${Nf} v_PotEn file PotenE.dat
+fix PEAve all ave/time 1 100000 ${Nf} v_PotEn file PotenE.dat
+fix PEAve all ave/time 1 100000 100000 v_PotEn file PotenE.dat
+
+compute T all temp
+fix TempAve all ave/time ${Ne} ${Nr} ${Nf} c_T file temperature.dat
+fix TempAve all ave/time 1 ${Nr} ${Nf} c_T file temperature.dat
+fix TempAve all ave/time 1 100000 ${Nf} c_T file temperature.dat
+fix TempAve all ave/time 1 100000 100000 c_T file temperature.dat
+
+compute P all pressure T
+fix PressAve all ave/time ${Ne} ${Nr} ${Nf} c_P file pressure.dat
+fix PressAve all ave/time 1 ${Nr} ${Nf} c_P file pressure.dat
+fix PressAve all ave/time 1 100000 ${Nf} c_P file pressure.dat
+fix PressAve all ave/time 1 100000 100000 c_P file pressure.dat
+
+
+# computing self-diffusion and Onsager coefficients using the OCTP plugin
+compute positions all position
+fix f1 all ordern diffusivity ${Ndiff} ${Nwrit} c_positions nb ${nb} nbe ${nbe}
+fix f1 all ordern diffusivity 1000 ${Nwrit} c_positions nb ${nb} nbe ${nbe}
+fix f1 all ordern diffusivity 1000 100000 c_positions nb ${nb} nbe ${nbe}
+fix f1 all ordern diffusivity 1000 100000 c_positions nb 10 nbe ${nbe}
+fix f1 all ordern diffusivity 1000 100000 c_positions nb 10 nbe 20
+
+
+# computing shear and bulk viscosities  using the OCTP plugin
+fix f2 all ordern viscosity ${Nvisc} ${Nwrit} c_P nb ${nb} nbe ${nbe}
+fix f2 all ordern viscosity 5 ${Nwrit} c_P nb ${nb} nbe ${nbe}
+fix f2 all ordern viscosity 5 100000 c_P nb ${nb} nbe ${nbe}
+fix f2 all ordern viscosity 5 100000 c_P nb 10 nbe ${nbe}
+fix f2 all ordern viscosity 5 100000 c_P nb 10 nbe 20
+
+
+# computing thermal conductivity using the OCTP plugin
+compute KE all ke/atom
+compute PE all pe/atom
+compute ST all stress/atom NULL virial
+compute heatflux all heat/flux KE PE ST
+fix f3 all ordern thermalconductivity ${Ncond} ${Nwrit} c_heatflux nb ${nb} nbe ${nbe}
+fix f3 all ordern thermalconductivity 5 ${Nwrit} c_heatflux nb ${nb} nbe ${nbe}
+fix f3 all ordern thermalconductivity 5 100000 c_heatflux nb ${nb} nbe ${nbe}
+fix f3 all ordern thermalconductivity 5 100000 c_heatflux nb 10 nbe ${nbe}
+fix f3 all ordern thermalconductivity 5 100000 c_heatflux nb 10 nbe 20
+
+
+# computing the RDF for all group pairs
+compute rdfs all rdf/ext Nbin ${binnum} Nwrite ${Nrdfw}
+compute rdfs all rdf/ext Nbin 2000 Nwrite ${Nrdfw}
+compute rdfs all rdf/ext Nbin 2000 Nwrite 1000
+fix f4 all ave/time 1 1 ${Nrdfe} c_rdfs
+fix f4 all ave/time 1 1 1000 c_rdfs
+
+dump trjectory all xyz ${Nd} movie.xyz
+dump trjectory all xyz 100000 movie.xyz
+dump_modify trjectory element Ow H K Cl
+
+run ${Nrun1}
+run 250000
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- fix ave/ordern command:
+
+@Article{Jamali2019,
+ author = {Jamali, Seyed Hossein and Wolf, Ludger and Becker, Tim M. and de Groen, Mariëtte and Ramdin, Mahinder and Hartkamp, Remco and Bardow, André and Vlugt, Thijs J. H. and Moultos, Othonas A.},
+ title = {OCTP: A Tool for On-the-Fly Calculation of Transport Properties of Fluids with the Order-n Algorithm in LAMMPS},
+ doi = {10.1021/acs.jcim.8b00939},
+ journal = {J. Chem. Inf. Model.},
+ year = {2019},
+ volume = {59},
+ pages = {1290-1294}
+ }
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+         0   1.1142376      300.30589     -109.02992     -13891.719    
+    100000   1.1142376      308.33697      702.88476     -13879.845    
+    200000   1.1142376      298.94474      415.64437     -13922.779    
+    250000   1.1142376      299.48737      214.80931     -13886.712    
+Loop time of 1301.04 on 12 procs for 250000 steps with 1608 atoms
+
+Performance: 33.204 ns/day, 0.723 hours/ns, 192.154 timesteps/s
+94.0% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 739.92     | 796.46     | 840.88     | 123.3 | 61.22
+Bond    | 3.4074     | 3.534      | 3.6527     |   3.4 |  0.27
+Kspace  | 296.37     | 341.14     | 398.02     | 189.1 | 26.22
+Neigh   | 42.243     | 42.261     | 42.282     |   0.2 |  3.25
+Comm    | 37.851     | 38.26      | 38.498     |   2.7 |  2.94
+Output  | 0.072599   | 0.072874   | 0.073627   |   0.1 |  0.01
+Modify  | 74.256     | 74.365     | 74.491     |   0.8 |  5.72
+Other   |            | 4.945      |            |       |  0.38
+
+Nlocal:            134 ave         140 max         119 min
+Histogram: 1 0 0 0 2 0 1 2 3 3
+Nghost:        4301.08 ave        4358 max        4256 min
+Histogram: 1 2 2 1 2 1 0 0 1 2
+Neighs:        49884.4 ave       54958 max       42706 min
+Histogram: 1 0 0 1 2 3 1 2 0 2
+
+Total # of neighbors = 598613
+Ave neighs/atom = 372.27177
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 19889
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 00.25Mstep
+shell bash copy_files.sh dt_2 00.25Mstep
+
+run ${Nrun1}
+run 250000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+    250000   1.1142376      299.48737      215.03071     -13886.712    
+    300000   1.1142376      294.59339     -261.21864     -13925.77     
+    400000   1.1142376      302.34092      1026.7621     -13931.077    
+    500000   1.1142376      292.49571      566.00885     -13937.452    
+Loop time of 1313.16 on 12 procs for 250000 steps with 1608 atoms
+
+Performance: 32.898 ns/day, 0.730 hours/ns, 190.380 timesteps/s
+93.6% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 731.77     | 797.32     | 843.33     | 132.9 | 60.72
+Bond    | 3.4255     | 3.525      | 3.6566     |   3.5 |  0.27
+Kspace  | 306.15     | 352.46     | 418.06     | 200.5 | 26.84
+Neigh   | 42.261     | 42.281     | 42.308     |   0.2 |  3.22
+Comm    | 37.833     | 38.229     | 38.484     |   2.9 |  2.91
+Output  | 0.10645    | 0.10684    | 0.10762    |   0.1 |  0.01
+Modify  | 74.181     | 74.295     | 74.431     |   0.7 |  5.66
+Other   |            | 4.947      |            |       |  0.38
+
+Nlocal:            134 ave         143 max         125 min
+Histogram: 1 1 1 3 0 0 4 0 1 1
+Nghost:        4285.33 ave        4324 max        4225 min
+Histogram: 1 1 0 0 2 1 2 2 0 3
+Neighs:        49933.8 ave       54604 max       44984 min
+Histogram: 1 0 1 2 2 1 3 0 1 1
+
+Total # of neighbors = 599205
+Ave neighs/atom = 372.63993
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 19894
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 00.50Mstep
+shell bash copy_files.sh dt_2 00.50Mstep
+
+run ${Nrun1}
+run 250000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+    500000   1.1142376      292.49571      566.46901     -13937.452    
+    600000   1.1142376      289.92364     -846.19068     -13910.901    
+    700000   1.1142376      291.84483      682.92587     -13936.478    
+    750000   1.1142376      306.10922      648.65848     -13940.154    
+Loop time of 1307.61 on 12 procs for 250000 steps with 1608 atoms
+
+Performance: 33.037 ns/day, 0.726 hours/ns, 191.188 timesteps/s
+93.8% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 738.93     | 796.82     | 846.83     | 137.5 | 60.94
+Bond    | 3.425      | 3.5139     | 3.6351     |   2.9 |  0.27
+Kspace  | 297.05     | 347.22     | 405.36     | 208.8 | 26.55
+Neigh   | 42.404     | 42.424     | 42.442     |   0.2 |  3.24
+Comm    | 37.889     | 38.265     | 38.408     |   2.6 |  2.93
+Output  | 0.07123    | 0.071517   | 0.072103   |   0.1 |  0.01
+Modify  | 74.295     | 74.368     | 74.477     |   0.6 |  5.69
+Other   |            | 4.928      |            |       |  0.38
+
+Nlocal:            134 ave         144 max         123 min
+Histogram: 1 1 2 1 1 2 0 1 0 3
+Nghost:        4295.08 ave        4369 max        4264 min
+Histogram: 3 1 2 4 1 0 0 0 0 1
+Neighs:        49913.8 ave       56679 max       47341 min
+Histogram: 3 1 4 2 1 0 0 0 0 1
+
+Total # of neighbors = 598966
+Ave neighs/atom = 372.49129
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 19901
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 00.75Mstep
+shell bash copy_files.sh dt_2 00.75Mstep
+
+run ${Nrun1}
+run 250000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+    750000   1.1142376      306.10922      649.40837     -13940.154    
+    800000   1.1142376      303.47548      1069.5796     -13889.387    
+    900000   1.1142376      305.46108     -393.04185     -13863.189    
+   1000000   1.1142376      302.83719      349.6803      -13829.203    
+Loop time of 1311.02 on 12 procs for 250000 steps with 1608 atoms
+
+Performance: 32.952 ns/day, 0.728 hours/ns, 190.692 timesteps/s
+93.6% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 729.46     | 795.48     | 855.43     | 127.5 | 60.68
+Bond    | 3.4217     | 3.5222     | 3.6563     |   3.3 |  0.27
+Kspace  | 291.83     | 352.04     | 418.11     | 192.2 | 26.85
+Neigh   | 42.281     | 42.306     | 42.331     |   0.3 |  3.23
+Comm    | 37.798     | 38.213     | 38.388     |   2.9 |  2.91
+Output  | 0.10618    | 0.10668    | 0.10728    |   0.1 |  0.01
+Modify  | 74.326     | 74.415     | 74.523     |   0.6 |  5.68
+Other   |            | 4.936      |            |       |  0.38
+
+Nlocal:            134 ave         145 max         119 min
+Histogram: 2 0 1 0 1 2 2 0 1 3
+Nghost:        4330.83 ave        4396 max        4263 min
+Histogram: 1 1 2 0 2 1 1 1 2 1
+Neighs:        49930.2 ave       57494 max       41646 min
+Histogram: 1 0 1 3 1 1 2 1 1 1
+
+Total # of neighbors = 599162
+Ave neighs/atom = 372.61318
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 19862
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 01.00Mstep
+shell bash copy_files.sh dt_2 01.00Mstep
+
+run ${Nrun1}
+run 250000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   1000000   1.1142376      302.83719      348.78559     -13829.203    
+   1100000   1.1142376      300.32132     -183.32962     -13927.633    
+   1200000   1.1142376      298.531       -311.23467     -13893.194    
+   1250000   1.1142376      293.09564     -2023.1795     -13972.385    
+Loop time of 1304.94 on 12 procs for 250000 steps with 1608 atoms
+
+Performance: 33.105 ns/day, 0.725 hours/ns, 191.580 timesteps/s
+93.9% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 721.48     | 795.96     | 841.61     | 137.8 | 61.00
+Bond    | 3.3913     | 3.5117     | 3.6008     |   2.7 |  0.27
+Kspace  | 299.27     | 345.21     | 419.68     | 209.6 | 26.45
+Neigh   | 42.482     | 42.498     | 42.52      |   0.2 |  3.26
+Comm    | 37.829     | 38.304     | 38.525     |   3.1 |  2.94
+Output  | 0.071342   | 0.071652   | 0.072375   |   0.1 |  0.01
+Modify  | 74.367     | 74.46      | 74.575     |   0.7 |  5.71
+Other   |            | 4.926      |            |       |  0.38
+
+Nlocal:            134 ave         147 max         121 min
+Histogram: 1 1 1 0 2 3 2 0 1 1
+Nghost:        4277.83 ave        4315 max        4238 min
+Histogram: 3 1 1 1 0 0 0 2 1 3
+Neighs:        49945.5 ave       55651 max       42479 min
+Histogram: 2 0 0 1 1 3 1 0 2 2
+
+Total # of neighbors = 599346
+Ave neighs/atom = 372.72761
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 19940
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 01.25Mstep
+shell bash copy_files.sh dt_2 01.25Mstep
+
+run ${Nrun1}
+run 250000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   1250000   1.1142376      293.09564     -2022.9041     -13972.385    
+   1300000   1.1142376      304.92887      356.23457     -13874.764    
+   1400000   1.1142376      295.11738     -913.28795     -13949.07     
+   1500000   1.1142376      291.83481     -901.24919     -13899.839    
+Loop time of 1311.39 on 12 procs for 250000 steps with 1608 atoms
+
+Performance: 32.942 ns/day, 0.729 hours/ns, 190.637 timesteps/s
+93.6% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 723.23     | 795.83     | 838.8      | 135.4 | 60.69
+Bond    | 3.4011     | 3.5069     | 3.6204     |   3.1 |  0.27
+Kspace  | 308.88     | 352.16     | 424.8      | 204.0 | 26.85
+Neigh   | 42.288     | 42.307     | 42.329     |   0.2 |  3.23
+Comm    | 37.822     | 38.233     | 38.406     |   2.7 |  2.92
+Output  | 0.10677    | 0.10702    | 0.10736    |   0.1 |  0.01
+Modify  | 74.247     | 74.324     | 74.44      |   0.6 |  5.67
+Other   |            | 4.922      |            |       |  0.38
+
+Nlocal:            134 ave         147 max         125 min
+Histogram: 1 3 1 1 1 2 1 1 0 1
+Nghost:        4304.83 ave        4373 max        4252 min
+Histogram: 1 1 2 2 2 1 1 0 0 2
+Neighs:        49954.2 ave       55434 max       44548 min
+Histogram: 1 0 0 3 2 3 2 0 0 1
+
+Total # of neighbors = 599450
+Ave neighs/atom = 372.79229
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 19854
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 01.50Mstep
+shell bash copy_files.sh dt_2 01.50Mstep
+
+run ${Nrun1}
+run 250000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   1500000   1.1142376      291.83481     -900.26582     -13899.839    
+   1600000   1.1142376      289.5267       15.99338      -13939.509    
+   1700000   1.1142376      293.24109     -333.32826     -13910.511    
+   1750000   1.1142376      299.07983     -228.60313     -13896.786    
+Loop time of 1299.67 on 12 procs for 250000 steps with 1608 atoms
+
+Performance: 33.239 ns/day, 0.722 hours/ns, 192.357 timesteps/s
+94.0% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 741.6      | 794.76     | 845.49     | 124.9 | 61.15
+Bond    | 3.4135     | 3.5132     | 3.6362     |   3.3 |  0.27
+Kspace  | 290.54     | 341.54     | 394.75     | 191.1 | 26.28
+Neigh   | 42.25      | 42.27      | 42.297     |   0.3 |  3.25
+Comm    | 37.837     | 38.236     | 38.402     |   2.8 |  2.94
+Output  | 0.070989   | 0.071346   | 0.071663   |   0.1 |  0.01
+Modify  | 74.258     | 74.343     | 74.499     |   0.8 |  5.72
+Other   |            | 4.933      |            |       |  0.38
+
+Nlocal:            134 ave         142 max         123 min
+Histogram: 1 0 1 0 4 1 1 1 1 2
+Nghost:        4307.75 ave        4382 max        4230 min
+Histogram: 1 0 1 2 4 0 0 2 1 1
+Neighs:        49944.3 ave       57181 max       45337 min
+Histogram: 1 1 5 1 1 0 1 1 0 1
+
+Total # of neighbors = 599332
+Ave neighs/atom = 372.71891
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 19868
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 01.75Mstep
+shell bash copy_files.sh dt_2 01.75Mstep
+
+run ${Nrun1}
+run 250000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   1750000   1.1142376      299.07983     -228.99123     -13896.786    
+   1800000   1.1142376      305.91438      1196.0191     -13868.061    
+   1900000   1.1142376      295.21838     -216.11765     -13914.348    
+   2000000   1.1142376      304.15522      429.7597      -13947.933    
+Loop time of 1306.26 on 12 procs for 250000 steps with 1608 atoms
+
+Performance: 33.072 ns/day, 0.726 hours/ns, 191.386 timesteps/s
+93.7% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 739.35     | 793.29     | 831.58     | 114.4 | 60.73
+Bond    | 3.4336     | 3.5253     | 3.6197     |   2.7 |  0.27
+Kspace  | 310.82     | 349.39     | 403.43     | 172.9 | 26.75
+Neigh   | 42.427     | 42.447     | 42.472     |   0.2 |  3.25
+Comm    | 37.875     | 38.233     | 38.402     |   2.6 |  2.93
+Output  | 0.1064     | 0.10664    | 0.10694    |   0.0 |  0.01
+Modify  | 74.239     | 74.338     | 74.49      |   0.8 |  5.69
+Other   |            | 4.922      |            |       |  0.38
+
+Nlocal:            134 ave         138 max         122 min
+Histogram: 1 0 0 1 0 0 1 2 2 5
+Nghost:        4298.83 ave        4326 max        4277 min
+Histogram: 2 0 2 1 2 2 1 0 1 1
+Neighs:        49893.8 ave       53212 max       46411 min
+Histogram: 1 1 1 2 0 2 2 1 1 1
+
+Total # of neighbors = 598725
+Ave neighs/atom = 372.34142
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 19904
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 02.00step
+shell bash copy_files.sh dt_2 02.00step
+
+run ${Nrun2}
+run 1000000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   2000000   1.1142376      304.15522      429.94414     -13947.933    
+   2100000   1.1142376      301.67409      1085.3403     -13878.581    
+   2200000   1.1142376      296.46749      1338.0335     -13932.002    
+   2300000   1.1142376      304.24284      62.389484     -13961.352    
+   2400000   1.1142376      296.61375     -523.62868     -13888.585    
+   2500000   1.1142376      302.06633      156.2399      -13854.642    
+   2600000   1.1142376      303.14795     -339.06339     -13829.214    
+   2700000   1.1142376      290.81526     -273.59081     -13958.309    
+   2800000   1.1142376      289.66781     -862.53556     -13975.622    
+   2900000   1.1142376      299.28309     -659.8454      -13893.564    
+   3000000   1.1142376      289.90505     -356.86773     -13923.51     
+Loop time of 5209.08 on 12 procs for 1000000 steps with 1608 atoms
+
+Performance: 33.173 ns/day, 0.723 hours/ns, 191.972 timesteps/s
+93.9% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2921.1     | 3180.6     | 3370       | 252.6 | 61.06
+Bond    | 13.625     | 14.087     | 14.538     |   6.4 |  0.27
+Kspace  | 1184       | 1374.5     | 1634.3     | 385.4 | 26.39
+Neigh   | 169.14     | 169.22     | 169.33     |   0.5 |  3.25
+Comm    | 151.44     | 153        | 153.8      |   5.4 |  2.94
+Output  | 0.35406    | 0.35472    | 0.35613    |   0.1 |  0.01
+Modify  | 297.18     | 297.6      | 298.25     |   1.7 |  5.71
+Other   |            | 19.72      |            |       |  0.38
+
+Nlocal:            134 ave         144 max         119 min
+Histogram: 1 0 0 1 1 1 5 0 2 1
+Nghost:        4308.83 ave        4343 max        4262 min
+Histogram: 1 0 1 2 1 2 0 2 0 3
+Neighs:          49899 ave       54533 max       46032 min
+Histogram: 3 0 3 0 0 1 2 0 2 1
+
+Total # of neighbors = 598788
+Ave neighs/atom = 372.3806
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 79546
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 03.00Mstep
+shell bash copy_files.sh dt_2 03.00Mstep
+
+run ${Nrun2}
+run 1000000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   3000000   1.1142376      289.90505     -356.47891     -13923.51     
+   3100000   1.1142376      303.38901      2.237935      -13931.138    
+   3200000   1.1142376      293.84991      749.54161     -13957.691    
+   3300000   1.1142376      302.04615     -166.76831     -13821.53     
+   3400000   1.1142376      284.85176      989.77372     -13950.903    
+   3500000   1.1142376      301.22823      427.56367     -13858.845    
+   3600000   1.1142376      305.42171      984.48404     -13921.118    
+   3700000   1.1142376      297.10284     -60.38681      -13968.492    
+   3800000   1.1142376      296.15411      39.242956     -13938.658    
+   3900000   1.1142376      307.37709     -565.00103     -13864.598    
+   4000000   1.1142376      297.55101      194.27372     -13847.884    
+Loop time of 5263.09 on 12 procs for 1000000 steps with 1608 atoms
+
+Performance: 32.832 ns/day, 0.731 hours/ns, 190.003 timesteps/s
+93.4% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2905.2     | 3178.6     | 3393.9     | 280.8 | 60.40
+Bond    | 13.703     | 14.063     | 14.554     |   6.5 |  0.27
+Kspace  | 1213.4     | 1429.8     | 1703.6     | 420.0 | 27.17
+Neigh   | 169.79     | 169.87     | 169.96     |   0.5 |  3.23
+Comm    | 151.34     | 153.05     | 153.74     |   5.9 |  2.91
+Output  | 0.35457    | 0.35529    | 0.35611    |   0.1 |  0.01
+Modify  | 297.29     | 297.62     | 298.09     |   1.4 |  5.65
+Other   |            | 19.71      |            |       |  0.37
+
+Nlocal:            134 ave         142 max         123 min
+Histogram: 1 0 1 1 1 1 3 2 1 1
+Nghost:        4330.58 ave        4386 max        4295 min
+Histogram: 2 1 1 3 2 1 0 0 1 1
+Neighs:        49900.8 ave       54737 max       44997 min
+Histogram: 1 0 2 1 1 3 2 1 0 1
+
+Total # of neighbors = 598810
+Ave neighs/atom = 372.39428
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 79569
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 04.00Mstep
+shell bash copy_files.sh dt_2 04.00Mstep
+
+run ${Nrun2}
+run 1000000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   4000000   1.1142376      297.55101      194.69767     -13847.884    
+   4100000   1.1142376      297.4348       521.09395     -13913.917    
+   4200000   1.1142376      301.27341     -761.61236     -13895.727    
+   4300000   1.1142376      294.42668     -533.91426     -13956.009    
+   4400000   1.1142376      289.42923     -489.74585     -13922.385    
+   4500000   1.1142376      308.24653      119.9818      -13932.634    
+   4600000   1.1142376      297.66585      574.57382     -13916.798    
+   4700000   1.1142376      310.76791      170.96168     -13880.023    
+   4800000   1.1142376      302.26941      716.50359     -13975.361    
+   4900000   1.1142376      306.90814      1603.1251     -13911.515    
+   5000000   1.1142376      290.63524     -272.65961     -13899.082    
+Loop time of 5219.89 on 12 procs for 1000000 steps with 1608 atoms
+
+Performance: 33.104 ns/day, 0.725 hours/ns, 191.575 timesteps/s
+93.8% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2900.6     | 3183.2     | 3345.1     | 272.6 | 60.98
+Bond    | 13.669     | 14.047     | 14.52      |   6.5 |  0.27
+Kspace  | 1219       | 1382.1     | 1665       | 414.9 | 26.48
+Neigh   | 169.6      | 169.67     | 169.76     |   0.5 |  3.25
+Comm    | 151.25     | 153.08     | 153.9      |   6.1 |  2.93
+Output  | 0.355      | 0.35588    | 0.35771    |   0.1 |  0.01
+Modify  | 297.38     | 297.7      | 298.23     |   1.4 |  5.70
+Other   |            | 19.7       |            |       |  0.38
+
+Nlocal:            134 ave         142 max         125 min
+Histogram: 1 1 1 1 3 1 0 1 0 3
+Nghost:        4300.17 ave        4365 max        4214 min
+Histogram: 1 1 0 1 2 0 3 2 0 2
+Neighs:        49926.6 ave       54516 max       43552 min
+Histogram: 1 1 0 2 0 1 1 3 1 2
+
+Total # of neighbors = 599119
+Ave neighs/atom = 372.58644
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 79628
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 05.00Mstep
+shell bash copy_files.sh dt_2 05.00Mstep
+
+run ${Nrun2}
+run 1000000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   5000000   1.1142376      290.63524     -272.6362      -13899.082    
+   5100000   1.1142376      296.5765      -33.78519      -13934.125    
+   5200000   1.1142376      299.2949      -346.90717     -13878.311    
+   5300000   1.1142376      302.78092      953.83611     -13923.549    
+   5400000   1.1142376      296.04199      246.73565     -13960.288    
+   5500000   1.1142376      304.09379     -27.697346     -13841.411    
+   5600000   1.1142376      306.24238     -243.29916     -13916.087    
+   5700000   1.1142376      298.08926      1011.8954     -13869.831    
+   5800000   1.1142376      294.35715     -229.59298     -13969.115    
+   5900000   1.1142376      304.95296      161.93711     -13872.683    
+   6000000   1.1142376      302.01067      427.51451     -13929.123    
+Loop time of 5241.71 on 12 procs for 1000000 steps with 1608 atoms
+
+Performance: 32.966 ns/day, 0.728 hours/ns, 190.778 timesteps/s
+93.8% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2946.4     | 3189.3     | 3351.6     | 233.8 | 60.84
+Bond    | 13.632     | 14.106     | 14.555     |   6.2 |  0.27
+Kspace  | 1234.6     | 1397.9     | 1641       | 354.1 | 26.67
+Neigh   | 169.24     | 169.33     | 169.41     |   0.5 |  3.23
+Comm    | 151.32     | 153        | 153.83     |   5.8 |  2.92
+Output  | 0.35483    | 0.35553    | 0.35664    |   0.1 |  0.01
+Modify  | 297.49     | 297.92     | 298.46     |   1.6 |  5.68
+Other   |            | 19.78      |            |       |  0.38
+
+Nlocal:            134 ave         147 max         123 min
+Histogram: 1 1 2 0 1 5 0 1 0 1
+Nghost:        4312.92 ave        4348 max        4285 min
+Histogram: 2 2 1 0 2 1 1 1 1 1
+Neighs:        49925.2 ave       56433 max       45538 min
+Histogram: 2 2 1 2 0 2 1 1 0 1
+
+Total # of neighbors = 599102
+Ave neighs/atom = 372.57587
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 79592
+Dangerous builds = 0
+shell bash copy_files.sh dt_${tstep} 06.00Mstep
+shell bash copy_files.sh dt_2 06.00Mstep
+
+run ${Nrun2}
+run 1000000
+PPPM initialization ...
+  extracting TIP4P info from pair style
+  using 12-bit tables for long-range coulomb (../kspace.cpp:342)
+  G vector (1/distance) = 0.31041064
+  grid = 24 24 24
+  stencil order = 5
+  estimated absolute RMS force accuracy = 0.0037566426
+  estimated relative force accuracy = 1.1313017e-05
+  using double precision KISS FFT
+  3d grid and FFT values/proc = 5415 1152
+Generated 0 of 6 mixed pair_coeff terms from arithmetic mixing rule
+Per MPI rank memory allocation (min/avg/max) = 14.4 | 14.41 | 14.41 Mbytes
+   Step        Density          Temp          Press          TotEng    
+   6000000   1.1142376      302.01067      427.71301     -13929.123    
+   6100000   1.1142376      302.89114      1150.726      -13903.483    
+   6200000   1.1142376      303.2675       609.13089     -13836.722    
+   6300000   1.1142376      299.92573     -29.636775     -13921.965    
+   6400000   1.1142376      293.8839      -339.07311     -13891.457    
+   6500000   1.1142376      301.66206      729.88783     -13882.884    
+   6600000   1.1142376      295.55676      409.26163     -13922.744    
+   6700000   1.1142376      296.03575      719.44231     -13921.862    
+   6800000   1.1142376      301.40264      462.82743     -13912.286    
+   6900000   1.1142376      300.90843      678.05899     -13889.816    
+   7000000   1.1142376      289.28392     -332.62533     -13958.515    
+Loop time of 5216.19 on 12 procs for 1000000 steps with 1608 atoms
+
+Performance: 33.128 ns/day, 0.724 hours/ns, 191.711 timesteps/s
+93.9% CPU use with 12 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2943.5     | 3183.2     | 3357.9     | 258.3 | 61.03
+Bond    | 13.716     | 14.099     | 14.525     |   6.1 |  0.27
+Kspace  | 1202.6     | 1378.4     | 1618.5     | 393.7 | 26.43
+Neigh   | 169.56     | 169.63     | 169.73     |   0.4 |  3.25
+Comm    | 151.3      | 152.94     | 153.53     |   5.3 |  2.93
+Output  | 0.35444    | 0.35556    | 0.35728    |   0.1 |  0.01
+Modify  | 297.48     | 297.73     | 298.24     |   1.3 |  5.71
+Other   |            | 19.76      |            |       |  0.38
+
+Nlocal:            134 ave         148 max         119 min
+Histogram: 1 1 1 1 0 3 3 1 0 1
+Nghost:        4312.33 ave        4380 max        4261 min
+Histogram: 2 1 1 3 1 0 1 1 0 2
+Neighs:        49940.5 ave       53868 max       43545 min
+Histogram: 1 0 1 1 1 2 0 3 0 3
+
+Total # of neighbors = 599286
+Ave neighs/atom = 372.6903
+Ave special neighs/atom = 1.8656716
+Neighbor list builds = 79603
+Dangerous builds = 0
