@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # General Simulation settings
-T_START=25  # degree celcius
-T_STOP=25  # degree celcius
+T_START=15  # degree celcius
+T_STOP=35  # degree celcius
 T_STEP=10  # degree celcius
-N_BLOCKS=1  # number of blocks
+N_BLOCKS=5  # number of blocks
 
 # Simulation box specific settings
 n_w=1100
@@ -68,20 +68,24 @@ do
         sed -i 's/TEMPERATURE/'$T_K'/g' simulation.lammps
         sed -i 's/JOBNAME/MD_'$temp'_run_'$i'/g' runMD
 
-        # RUN THE SIMULATION
+        # RUN THE SIMULATION LOCALLY DIRECTLY
         # This one only works on  hal9000 c200
         # Adding the -sf omp -pk omp 1 to your lammps executable uses the OPENMP package.
         # This significantly accelerates the simulation.
-        mpirun -np 6 --bind-to socket --map-by socket \
-            --x OMP_NUM_THREADS=1 \
-            /home/jelle/software/lammps/lammps2025/build/lmp -in simulation.lammps -sf omp -pk omp 1
+        # mpirun -np 6 --bind-to socket --map-by socket \
+        #     --x OMP_NUM_THREADS=1 \
+        #     /home/jelle/software/lammps/lammps2025/build/lmp -in simulation.lammps -sf omp -pk omp 1
 
-        echo "Done with OPENMP LAMMPS RUN"
-        echo -e "\n\n\n\n\n"
-    
-        cd ..
-        echo "done with submitting block $block run $i"
+        # echo "Done with OPENMP LAMMPS RUN"
+        # echo -e "\n\n\n\n\n"
+
+        # # RUN THE SIMULATION ON THE CLUSTER
+        # sbatch runMD
+
+        echo "Preparation done for block $block run $i"
         echo "Temp = $T_K, r = $r mol/l, L = $L angstrom"
+
+        cd ..
     done
     cd ..
 done
