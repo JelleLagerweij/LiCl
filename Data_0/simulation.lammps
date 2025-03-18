@@ -10,17 +10,17 @@ boundary p p p
 atom_style full
 
 #################### VARIABLES ####################
-variable Temp       equal   288.15          # Temperature in K
+variable Temp       equal   TEMPERATURE          # Temperature in K
 variable Pres       equal   1.0             # Pressure in atm.
 
 variable RandomSeed equal   125             # The random seed for velocity
-variable tstep      equal   2.0             # 1fs 
-variable Ninptpre   equal   10000           # Pre-initialize the NPT ensemble (very small timesteps)
-variable Ninpt      equal   50000           # Initialize the NPT ensemble
-variable Npnpt      equal   1000000         # Production in the NPT ensemble (volume)
-variable Ninvtpre   equal   10000           # Pre-initialize the NVT ensemble (very small timesteps)
-variable Ninvt      equal   100000          # Initialize the NVT ensemble
-variable Nrun       equal   25000000        # production in the NVT ensemble
+variable tstep      equal   1.0             # 1fs 
+variable Ninptpre   equal   1000#0           # Pre-initialize the NPT ensemble (very small timesteps)
+variable Ninpt      equal   5000#0           # Initialize the NPT ensemble
+variable Npnpt      equal   1000#000         # Production in the NPT ensemble (volume)
+variable Ninvtpre   equal   1000#0           # Pre-initialize the NVT ensemble (very small timesteps)
+variable Ninvt      equal   1000#00          # Initialize the NVT ensemble
+variable Nrun       equal   2500#0000        # production in the NVT ensemble
 variable Nf         equal   1000            # Nfreq (fix ave/time and thermo)
 variable Ne         equal   20              # Nevery (fix ave/time)
 variable Nr         equal   ${Nf}/${Ne}     # Nrepeat (fix ave/time)
@@ -76,7 +76,7 @@ thermo ${Nthermo}
 
 #################### 1) Initialize the NPT ensemble ####################
 # applying the shake algorithm for rigid molecules and the NPT solver
-fix constrain all shake 1.0e-6 1000 0 b 1 2 a 1
+fix constrain all shake 1.0e-6 1000 0 b 1 a 1
 fix integrate all npt temp ${Temp} ${Temp} 10.0 iso ${Pres} ${Pres} 100.0
 
 # balance 0.9 shift xyz 20 1.1 out tmp.balance

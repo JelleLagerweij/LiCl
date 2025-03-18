@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # General Simulation settings
-T_START=15  # degree celcius
-T_STOP=15  # degree celcius
+T_START=25  # degree celcius
+T_STOP=25  # degree celcius
 T_STEP=10  # degree celcius
 N_BLOCKS=1  # number of blocks
 
@@ -45,16 +45,16 @@ do
         T_K=$(echo "$output" | awk 'NR==3') # temperature in K
 
         # Create initial configuration using fftool and packmol
-        ~/software/lammps/lammps2018/fftool/fftool $n_w water.xyz $n_licl Li.xyz $n_licl Cl.xyz -b $L > /dev/null
+        /home/jelle/software/lammps/lammps2018/fftool/fftool $n_w water.xyz $n_licl Li.xyz $n_licl Cl.xyz -b $L > /dev/null
         echo "seed -1" >> pack.inp
-        ~/software/lammps/packmol2025/packmol < pack.inp > packmol.out
+        /home/jelle/software/lammps/packmol2025/packmol < pack.inp > packmol.out
 
         # Modify simbox.xyz for Lattice values
         # sed -i 's/Built with Packmol/Lattice="'$L' 0.0 0.0 0.0 '$L' 0.0 0.0 0.0 '$L'"/' simbox.xyz
-        ~/software/lammps/lammps2018/fftool/fftool $n_w water.xyz $n_licl Li.xyz $n_licl Cl.xyz -b $L -l > /dev/null
+        /home/jelle/software/lammps/lammps2018/fftool/fftool $n_w water.xyz $n_licl Li.xyz $n_licl Cl.xyz -b $L -l > /dev/null
 
         # Copy the POSCAR file and clean up
-        sed -i '13,28d' data.lmp
+        sed -i '12,26d' data.lmp
         mv data.lmp ../data.lmp
         cd ..
         rm -rf config
@@ -69,11 +69,15 @@ do
         sed -i 's/JOBNAME/MD_'$temp'_run_'$i'/g' runMD
 
         # RUN THE SIMULATION
-        # mpirun -np 6 --bind-to socket --map-by socket \
-        #     --x OMP_NUM_THREADS=1 \
-        #     ~/software/lammps/lammps2025/build/lmp -in simulation.lammps -sf omp -pk omp 1
-        # echo "Done with OPENMP LAMMPS RUN"
-        # echo -e "\n\n\n\n\n"
+        # This one only works on  hal9000 c200
+        # Adding the -sf omp -pk omp 1 to your lammps executable uses the OPENMP package.
+        # This significantly accelerates the simulation.
+        mpirun -np 6 --bind-to socket --map-by socket \
+            --x OMP_NUM_THREADS=1 \
+            /home/jelle/software/lammps/lammps2025/build/lmp -in simulation.lammps -sf omp -pk omp 1
+
+        echo "Done with OPENMP LAMMPS RUN"
+        echo -e "\n\n\n\n\n"
     
         cd ..
         echo "done with submitting block $block run $i"
