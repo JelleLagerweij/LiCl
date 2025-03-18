@@ -1,0 +1,55 @@
+# ----------------- INTERMOLECULAR POTENTIAL -------------------
+# ---------------Developed for NaCl in water (tip4p/2005) system-----
+# Thanks to Parsa Habibi
+
+mass 1 15.9994 # Ow
+mass 2 1.00794 # Hw
+mass 3 39.0983 # K
+mass 4 15.9994 # O(OH)
+mass 5 1.00794 # H(OH)
+
+
+pair_style lj/cut/tip4p/long 1 2 1 1 0.1546 10.0
+kspace_style pppm/tip4p 1.0e-5
+pair_modify tail yes # ATC 
+
+#-----------------Combinations----------------------------
+		
+pair_coeff 1 1 0.1852 3.1589     # Ow-Ow
+pair_coeff 1 2 0.0000 0.0000     # Ow-Hw
+pair_coeff 1 3 0.3347 2.8954     # Ow-K
+pair_coeff 1 4 0.1054 3.4044     # Ow-OH(OH)
+pair_coeff 1 5 0.0903 2.30095    # Ow-H(OH)
+pair_coeff 2 2 0.0000 0.0000     # Hw-Hw
+pair_coeff 2 3 0.0000 0.0000     # Hw-K
+pair_coeff 2 4 0.0000 0.0000     # Hw-O(OH)
+pair_coeff 2 5 0.0000 0.0000     # Hw-H(OH)    
+pair_coeff 3 3 0.4746 2.3014     # K-K
+pair_coeff 3 4 0.1562 2.9757     # K-O(OH)
+pair_coeff 3 5 0.1445 1.8722     # K-H(OH)
+pair_coeff 4 4 0.0600 3.6500     # O(OH)-O(OH)
+pair_coeff 4 5 0.0514 2.5465     # O(OH)-H(OH)
+pair_coeff 5 5 0.0440 1.4430     # H(OH)-H(OH)
+
+
+bond_style  harmonic 
+bond_coeff 1 1000 0.9572          # Ow-Hw
+bond_coeff 2 1000 0.9800          # O(OH)-H(OH)
+
+angle_style harmonic
+angle_coeff 1 100 104.52          # H-O-H
+
+#dihedral_style none 
+#improper_style none
+ 
+set type 1 charge -1.1128        # O
+set type 2 charge +0.5564        # OH
+set type 3 charge +0.7500        # K
+set type 4 charge -1.2181        # O(OH)
+set type 5 charge +0.4681        # H(OH)
+
+
+
+
+
+

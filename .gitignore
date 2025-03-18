@@ -8,3 +8,5 @@
 *.json
 *.sqlite
 __pycache__
+.venv
+/old/*

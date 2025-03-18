@@ -1,0 +1,52 @@
+#!/bin/sh
+#
+#SBATCH --job-name="LAMMPS_MD"
+#SBATCH --partition=compute-p2
+#SBATCH --time=2-00:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=27
+#SBATCH --cpus-per-task=1
+
+# use default memory ammount
+##SBATCH --exclusive
+##SBATCH --mem=0
+
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-user=v.j.lagerweij@tudelft.nl
+#SBATCH --constraint=scratch-node  # Creates scratch temp file system for user refer to with $TMPDIR
+
+module load 2024r1
+module load openmpi/4.1.6
+module load fftw/3.3.10_openmp_True
+module load openblas/0.3.24_threads_openmp
+module load netlib-scalapack/2.2.0
+module load hdf5/1.14.3
+module load cmake/3.27.7
+
+lmp=~/software/lammps/lammps2025/build/
+
+# Start copying to compute node and time that activity
+start1=$(date +%s)
+echo "Starting to copy"
+cp -r  $SLURM_SUBMIT_DIR /$TMPDIR/$SLURM_JOBID  # copy files over to tmp drive located at the node
+cd /$TMPDIR/$SLURM_JOBID
+rm slurm-${SLURM_JOBID}.out  # make sure to not have a slurm output file in the tmp drive as that write back to submit folder
+stop1=$(date +%s)
+echo "Copying done, simulation starting, time elapesd is $(($stop1-$start1)) seconds"
+# End copying
+
+# Start running main program and time that activity
+start2=$(date +%s)
+srun --x OMP_NUM_THREADS=1 $lmp/lmp -in simulation.in -sf omp -pk omp 1 # run your main executable
+stop2=$(date +%s)
+echo "simulation done, copying starting, time elapesd is $(($stop2-$start2)) seconds"
+# End running main program
+
+# Start copying back to drive and time that activity
+start3=$(date +%s)
+rsync -a "$(pwd -P)/" ${SLURM_SUBMIT_DIR}  # when writing back to submit directory, rsync is the smarter solution
+rm -rf /$TMPDIR/$SLURM_JOBID  # remove file to clean up after yourself
+stop3=$(date +%s)
+echo "Done with copying with rsync and files are removed, closing down job, time elapesd is $(($stop3-$start3)) seconds"
+# End copying
+
